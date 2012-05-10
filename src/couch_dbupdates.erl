@@ -5,18 +5,22 @@
 
 handle_dbupdates(Fun, Acc) ->
     NotifierPid = db_update_notifier(),
-    Pid = spawn(fun() -> loop(NotifierPid, Fun, Acc) end),
-    {ok, Pid}.
+    try
+        loop(Fun, Acc)
+    after
+        catch(couch_db_update_notifier:stop(NotifierPid))
+    end.
 
 
-loop(NotifierPid, Fun, Acc) ->
+loop(Fun, Acc) ->
     receive
         {db_updated, Event} ->
             case Fun(Event, Acc) of
                 {ok, Acc1} ->
-                    loop(NotifierPid, Fun, Acc1);
+                    loop(Fun, Acc1);
                 stop ->
-                    couch_db_update_notifier:stop(NotifierPid)
+                    Fun(stop, Acc)
+
             end
     end.
 
