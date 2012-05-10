@@ -14,9 +14,14 @@ It's actually **supported by all the [refuge](http://refuge.io) projects**:
 
 To get db events, do a GET to `/_db_updates` .
 
-You can pass an optional query parameter `feed`. The feed can be
-`longpoll` (default) for longpolling, `eventsource` for event stream or
-`continuous` for continuous feed.
+You can pass an optional query parameters:
+
+* `feed` The feed can be `longpoll` (default) for longpolling, `eventsource`
+  for event stream or `continuous` for continuous feed.
+* `timeout`: timeout before the longpolling connection close or when the
+  heartbeat is emitted.
+* `heartbeat`: true, or false. an empty line is emittend when the
+  timeout occurs to maintain the connection active.
 
 
 ## Example of usage
