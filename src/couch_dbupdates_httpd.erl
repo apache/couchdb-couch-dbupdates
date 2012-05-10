@@ -51,7 +51,7 @@ handle_update(Event, #state{resp=Resp, feed="eventsource"}=State) ->
     EventObj = event_obj(Event),
     {ok, Resp1} = couch_httpd:send_chunk(Resp, ["data: ",
                                                 ?JSON_ENCODE(EventObj),
-                                                "\n"]),
+                                                "\n\n"]),
     {ok, State#state{resp=Resp1}};
 handle_update(Event, #state{resp=Resp, feed="continuous"}=State) ->
     EventObj = event_obj(Event),
