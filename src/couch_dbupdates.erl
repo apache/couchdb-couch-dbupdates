@@ -8,7 +8,7 @@ handle_dbupdates(Fun, Acc) ->
     try
         loop(Fun, Acc)
     after
-        catch(couch_db_update_notifier:stop(NotifierPid))
+        couch_db_update_notifier:stop(NotifierPid)
     end.
 
 
