@@ -15,7 +15,8 @@ It's actually **supported by all the [refuge](http://refuge.io) projects**:
 To get db events, do a GET to `/_db_updates` .
 
 You can pass an optional query parameter `feed`. The feed can be
-`longpoll` (default) or `continuous`.
+`longpoll` (default) for longpolling, `eventsource` for event stream or
+`continuous` for continuous feed.
 
 
 ## Example of usage

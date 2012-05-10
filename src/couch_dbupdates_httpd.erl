@@ -8,9 +8,18 @@
 -record(state, {resp, feed}).
 
 handle_req(#httpd{method='GET'}=Req) ->
-    {ok, Resp} = couch_httpd:start_json_response(Req, 200),
-
     Feed = proplists:get_value("feed", couch_httpd:qs(Req), "longpoll"),
+
+    {ok, Resp} = case Feed of
+        "eventsource" ->
+            Headers = [
+                {"Content-Type", "text/event-stream"},
+                {"Cache-Control", "no-cache"}
+            ],
+            couch_httpd:start_json_response(Req, 200, Headers);
+        _ ->
+            couch_httpd:start_json_response(Req, 200)
+    end,
 
     State = #state{resp=Resp, feed=Feed},
     couch_dbupdates:handle_dbupdates(fun handle_update/2,
@@ -22,6 +31,12 @@ handle_req(Req, _Db) ->
 handle_update(stop, #state{resp=Resp}) ->
     couch_httpd:end_json_response(Resp);
 
+handle_update(Event, #state{resp=Resp, feed="eventsource"}=State) ->
+    EventObj = event_obj(Event),
+    {ok, Resp1} = couch_httpd:send_chunk(Resp, ["data: ",
+                                                ?JSON_ENCODE(EventObj),
+                                                "\n"]),
+    {ok, State#state{resp=Resp1}};
 handle_update(Event, #state{resp=Resp, feed="continuous"}=State) ->
     EventObj = event_obj(Event),
     {ok, Resp1} = couch_httpd:send_chunk(Resp, [?JSON_ENCODE(EventObj) |
