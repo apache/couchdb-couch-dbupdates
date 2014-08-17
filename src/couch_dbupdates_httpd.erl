@@ -60,6 +60,8 @@ run(St, Timeout) ->
 
 loop(Timeout, St) ->
     Event = receive
+        {'$couch_event', _DbName, {index_commit, _}} ->
+            loop(Timeout, St);
         {'$couch_event', DbName, Ev} ->
             {DbName, Ev}
     after Timeout ->
