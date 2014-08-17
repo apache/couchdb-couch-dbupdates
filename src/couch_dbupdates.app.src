@@ -1,11 +1,12 @@
-{application, couch_dbupdates,
- [
-  {description, ""},
-  {vsn, git},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
-  {env, []}
- ]}.
+{application, couch_dbupdates, [
+    {description, "HTTP interface to CouchDB events."},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        couch_event,
+        couch
+    ]},
+    {env, []}
+]}.
