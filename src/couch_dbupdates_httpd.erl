@@ -4,25 +4,25 @@
 
 -include_lib("couch/include/couch_db.hrl").
 
--record(state, {resp, feed}).
+-record(st, {
+    resp,
+    feed,
+    heartbeat,
+    timeout
+}).
+
 
 handle_req(#httpd{method='GET'}=Req) ->
     ok = couch_httpd:verify_is_server_admin(Req),
     Qs = couch_httpd:qs(Req),
     Feed = proplists:get_value("feed", Qs, "longpoll"),
-
-    Timeout = list_to_integer(
-                proplists:get_value("timeout", Qs, "60000")
-    ),
-
+    Timeout = list_to_integer(proplists:get_value("timeout", Qs, "60000")),
     Heartbeat0 = proplists:get_value("heartbeat", Qs),
     Heartbeat = case {Feed, Heartbeat0} of
         {"longpoll", _} -> false;
         {_, "false"} -> false;
         _ -> true
     end,
-
-    Options = [{timeout, Timeout}, {heartbeat, Heartbeat}],
 
     {ok, Resp} = case Feed of
         "eventsource" ->
@@ -35,35 +35,85 @@ handle_req(#httpd{method='GET'}=Req) ->
             couch_httpd:start_json_response(Req, 200)
     end,
 
-    State = #state{resp=Resp, feed=Feed},
-    couch_dbupdates:handle_dbupdates(fun handle_update/2,
-                                     State, Options).
+    St1 = #st{
+        resp = Resp,
+        feed = Feed,
+        heartbeat = Heartbeat,
+        timeout = Timeout
+    },
+    {ok, St2} = run(St1, Timeout),
+    {ok, St2#st.resp};
 
-handle_req(Req, _Db) ->
+handle_req(Req) ->
     couch_httpd:send_method_not_allowed(Req, "GET").
 
-handle_update(stop, #state{resp=Resp}) ->
-    couch_httpd:end_json_response(Resp);
-handle_update(heartbeat, #state{resp=Resp}=State) ->
-    {ok, Resp1} = couch_httpd:send_chunk(Resp, "\n"),
-    {ok, State#state{resp=Resp1}};
-handle_update(Event, #state{resp=Resp, feed="eventsource"}=State) ->
-    EventObj = event_obj(Event),
-    {ok, Resp1} = couch_httpd:send_chunk(Resp, ["data: ",
-                                                ?JSON_ENCODE(EventObj),
-                                                "\n\n"]),
-    {ok, State#state{resp=Resp1}};
-handle_update(Event, #state{resp=Resp, feed="continuous"}=State) ->
-    EventObj = event_obj(Event),
-    {ok, Resp1} = couch_httpd:send_chunk(Resp, [?JSON_ENCODE(EventObj) |
-                            "\n"]),
-    {ok, State#state{resp=Resp1}};
-handle_update(Event, #state{resp=Resp, feed="longpoll"}) ->
+
+run(St, Timeout) ->
+    ok = couch_event:register_all(self()),
+    try
+        loop(St, Timeout)
+    after
+        ok = couch_event:unregister(self()),
+        drain_events()
+    end.
+
+
+loop(Timeout, St) ->
+    Event = receive
+        {'$couch_event', DbName, Ev} ->
+            {DbName, Ev}
+    after Timeout ->
+        timeout
+    end,
+    case handle_update(Event, St) of
+        {ok, NewSt} ->
+            loop(Timeout, NewSt);
+        {stop, NewSt} ->
+            {ok, NewSt}
+    end.
+
+
+drain_events() ->
+    receive
+        {'$couch_event', _, _} ->
+            drain_events()
+    after 0 ->
+        ok
+    end.
+
+
+handle_update(timeout, #st{heartbeat=true}=St) ->
+    {ok, Resp1} = couch_httpd:send_chunk(St#st.resp, "\n"),
+    {ok, St#st{resp=Resp1}};
+handle_update(timeout, #st{heartbeat=false}=St) ->
+    {ok, Resp1} = couch_httpd:end_json_response(St#st.resp),
+    {stop, St#st{resp=Resp1}};
+handle_update(Event, #st{feed="eventsource"}=St) ->
+    Chunk = ["data: ", ?JSON_ENCODE(event_obj(Event)), "\n\n"],
+    {ok, Resp1} = couch_httpd:send_chunk(St#st.resp, Chunk),
+    {ok, St#st{resp=Resp1}};
+handle_update(Event, #st{feed="continuous"}=St) ->
+    Chunk = [?JSON_ENCODE(event_obj(Event)), "\n"],
+    {ok, Resp1} = couch_httpd:send_chunk(St#st.resp, Chunk),
+    {ok, St#st{resp=Resp1}};
+handle_update(Event, #st{feed="longpoll"}=St) ->
     {Props} = event_obj(Event),
     JsonObj = {[{<<"ok">>, true} | Props]},
-    couch_httpd:send_chunk(Resp, ?JSON_ENCODE(JsonObj)),
-    stop.
+    {ok, Resp1} = couch_httpd:send_chunk(St#st.resp, ?JSON_ENCODE(JsonObj)),
+    {ok, Resp2} = couch_httpd:end_json_response(Resp1),
+    {stop, St#st{resp=Resp2}}.
 
-event_obj({Type, DbName}) ->
-    {[{<<"type">>, couch_util:to_binary(Type)},
-      {<<"db_name">>, couch_util:to_binary(DbName)}]}.
+
+event_obj({DbName, Event}) when is_atom(Event) ->
+    {[
+        {<<"type">>, couch_util:to_binary(Event)},
+        {<<"db_name">>, couch_util:to_binary(DbName)}
+    ]};
+event_obj({DbName, {ddoc_updated, DDocId}}) ->
+    {[
+        {<<"type">>, <<"ddoc_updated">>},
+        {<<"db_name">>, couch_util:to_binary(DbName)},
+        {<<"ddoc_id">>, couch_util:to_binary(DDocId)}
+    ]}.
+
+
