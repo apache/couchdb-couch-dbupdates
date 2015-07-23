@@ -8,7 +8,7 @@
 
 handle_req(#httpd{method='GET'}=Req) ->
     ok = couch_httpd:verify_is_server_admin(Req),
-    Qs = couch_httpd:qs(Req),
+    Qs = chttpd:qs(Req),
     Feed = proplists:get_value("feed", Qs, "longpoll"),
 
     Timeout = list_to_integer(
