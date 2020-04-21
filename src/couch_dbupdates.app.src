@@ -2,10 +2,20 @@
  [
   {description, ""},
   {vsn, git},
-  {registered, []},
+  {mod, {couch_dbdelete_app, []}},
+  {registered,  [
+                 couch_dbdelete_sup,
+                 couch_dbdelete_server
+                ]},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  erlfdb,
+                  couch_epi,
+                  couch_log,
+                  config,
+                  fabric,
+                  couch_jobs
                  ]},
   {env, []}
  ]}.
